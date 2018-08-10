@@ -52,7 +52,7 @@ void confLogger(VerboseMode mode) @safe {
 @safe unittest {
     auto old_level = logger.globalLogLevel;
     auto old_log = logger.sharedLog;
-    scope(exit) {
+    scope (exit) {
         logger.globalLogLevel = old_level;
         logger.sharedLog = old_log;
     }
@@ -137,7 +137,7 @@ struct ColorImpl {
         char[] buf;
         buf.reserve(100);
         auto fmt = FormatSpec!char("%s");
-        toString((const(char)[] s) @safe const { buf ~= s; }, fmt);
+        toString((const(char)[] s) @safe const{ buf ~= s; }, fmt);
         auto trustedUnique(T)(T t) @trusted {
             return assumeUnique(t);
         }
