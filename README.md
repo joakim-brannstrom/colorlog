@@ -1,7 +1,6 @@
-# colorlog
+# colorlog [![Build Status](https://travis-ci.org/joakim-brannstrom/colorlog.svg?branch=master)](https://travis-ci.org/joakim-brannstrom/colorlog)
 
-**colorlog** is a logger implementation of the interface for
-`std.experimental.logger` that supports coloring the messages.
+**colorlog** is a logger intended to be used with `std.experimental.logger`. It adds two loggers and functionality to add console colors to messages.
 
 # Usage
 
