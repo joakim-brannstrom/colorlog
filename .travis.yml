@@ -8,8 +8,6 @@ d:
 os:
     - linux
 
-cache: dub
-
 notifications:
     email: false
 
