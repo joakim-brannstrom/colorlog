@@ -28,7 +28,7 @@ enum VerboseMode {
 
 /** Configure `std.experimental.logger` with a colorlog instance.
  */
-void confLogger(VerboseMode mode) {
+void confLogger(VerboseMode mode) @safe {
     switch (mode) {
     case VerboseMode.info:
         logger.globalLogLevel = logger.LogLevel.info;
@@ -46,6 +46,18 @@ void confLogger(VerboseMode mode) {
         logger.globalLogLevel = logger.LogLevel.info;
         logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
     }
+}
+
+@("shall be @safe to configure the logger")
+@safe unittest {
+    auto old_level = logger.globalLogLevel;
+    auto old_log = logger.sharedLog;
+    scope(exit) {
+        logger.globalLogLevel = old_level;
+        logger.sharedLog = old_log;
+    }
+
+    confLogger(VerboseMode.info);
 }
 
 private template BaseColor(int n) {
@@ -94,26 +106,26 @@ struct ColorImpl {
         Mode mode_;
     }
 
-    this(string txt) {
+    this(string txt) @safe pure nothrow @nogc {
         text = txt;
     }
 
-    this(string txt, Color c) {
+    this(string txt, Color c) @safe pure nothrow @nogc {
         text = txt;
         fg_ = c;
     }
 
-    auto fg(Color c_) {
+    auto fg(Color c_) @safe pure nothrow @nogc {
         this.fg_ = c_;
         return this;
     }
 
-    auto bg(Background c_) {
+    auto bg(Background c_) @safe pure nothrow @nogc {
         this.bg_ = c_;
         return this;
     }
 
-    auto mode(Mode c_) {
+    auto mode(Mode c_) @safe pure nothrow @nogc {
         this.mode_ = c_;
         return this;
     }
@@ -125,7 +137,7 @@ struct ColorImpl {
         char[] buf;
         buf.reserve(100);
         auto fmt = FormatSpec!char("%s");
-        toString((const(char)[] s) { buf ~= s; }, fmt);
+        toString((const(char)[] s) @safe const { buf ~= s; }, fmt);
         auto trustedUnique(T)(T t) @trusted {
             return assumeUnique(t);
         }
@@ -144,8 +156,18 @@ struct ColorImpl {
     }
 }
 
-auto color(string s, Color c = Color.none) {
+auto color(string s, Color c = Color.none) @safe pure nothrow @nogc {
     return ColorImpl(s, c);
+}
+
+@("shall be safe/pure/nothrow/nogc to color a string")
+@safe pure nothrow @nogc unittest {
+    auto s = "foo".color(Color.red).bg(Background.black).mode(Mode.bold);
+}
+
+@("shall be safe to color a string")
+@safe unittest {
+    auto s = "foo".color(Color.red).bg(Background.black).mode(Mode.bold).toString;
 }
 
 /** Whether to print text with colors or not
@@ -220,7 +242,7 @@ class SimpleLogger : logger.Logger {
 }
 
 class DebugLogger : logger.Logger {
-    this(const logger.LogLevel lvl = LogLevel.trace) {
+    this(const logger.LogLevel lvl = LogLevel.trace) @safe {
         super(lvl);
         initColors;
     }
