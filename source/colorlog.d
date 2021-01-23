@@ -16,8 +16,6 @@ import std.experimental.logger : LogLevel;
 
 /// The verbosity level of the logging to use.
 enum VerboseMode {
-    /// Warning+
-    minimal,
     /// Info+
     info,
     /// Trace+
@@ -29,7 +27,7 @@ enum VerboseMode {
 /** Configure `std.experimental.logger` with a colorlog instance.
  */
 void confLogger(VerboseMode mode) @safe {
-    switch (mode) {
+    final switch (mode) {
     case VerboseMode.info:
         logger.globalLogLevel = logger.LogLevel.info;
         logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
@@ -42,22 +40,42 @@ void confLogger(VerboseMode mode) @safe {
         logger.globalLogLevel = logger.LogLevel.warning;
         logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
         break;
-    default:
-        logger.globalLogLevel = logger.LogLevel.info;
-        logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
     }
 }
 
 @("shall be @safe to configure the logger")
 @safe unittest {
-    auto old_level = logger.globalLogLevel;
-    auto old_log = logger.sharedLog;
+    auto oldLevel = logger.globalLogLevel;
+    auto oldLog = logger.sharedLog;
     scope (exit) {
-        logger.globalLogLevel = old_level;
-        logger.sharedLog = old_log;
+        logger.globalLogLevel = oldLevel;
+        logger.sharedLog = oldLog;
     }
 
     confLogger(VerboseMode.info);
+}
+
+@("shall print colors, backgrounds and modes")
+unittest {
+    import std.stdio;
+    import std.traits;
+    import std.conv;
+    import std.string;
+
+    foreach (c; EnumMembers!Color) {
+        write(c.to!string.color(c).toString.rightJustify(30));
+        foreach (m; EnumMembers!Mode) {
+            writef(" %s", m.to!string.color(c).mode(m));
+        }
+        writeln;
+    }
+    foreach (c; EnumMembers!Background) {
+        write(c.to!string.color.bg(c).toString.rightJustify(30));
+        foreach (m; EnumMembers!Mode) {
+            writef(" %s", m.to!string.color.bg(c).mode(m));
+        }
+        writeln;
+    }
 }
 
 private template BaseColor(int n) {
@@ -115,17 +133,35 @@ struct ColorImpl {
         fg_ = c;
     }
 
-    auto fg(Color c_) @safe pure nothrow @nogc {
+    ColorImpl opDispatch(string fn)() {
+        import std.conv : to;
+        import std.string : toLower;
+
+        static if (fn.length >= 2 && (fn[0 .. 2] == "fg" || fn[0 .. 2] == "bg")) {
+            static if (fn[0 .. 2] == "fg") {
+                fg_ = fn[2 .. $].toLower.to!Color;
+            } else static if (fn[0 .. 2] == "bg") {
+                bg_ = fn[2 .. $].toLower.to!Background;
+            } else {
+                static assert("unable to handle " ~ fn);
+            }
+        } else {
+            mode_ = fn.to!Mode;
+        }
+        return this;
+    }
+
+    ColorImpl fg(Color c_) @safe pure nothrow @nogc {
         this.fg_ = c_;
         return this;
     }
 
-    auto bg(Background c_) @safe pure nothrow @nogc {
+    ColorImpl bg(Background c_) @safe pure nothrow @nogc {
         this.bg_ = c_;
         return this;
     }
 
-    auto mode(Mode c_) @safe pure nothrow @nogc {
+    ColorImpl mode(Mode c_) @safe pure nothrow @nogc {
         this.mode_ = c_;
         return this;
     }
@@ -168,6 +204,16 @@ auto color(string s, Color c = Color.none) @safe pure nothrow @nogc {
 @("shall be safe to color a string")
 @safe unittest {
     auto s = "foo".color(Color.red).bg(Background.black).mode(Mode.bold).toString;
+}
+
+@("shall use opDispatch for config")
+@safe unittest {
+    import std.stdio;
+
+    writeln("opDispatch".color.fgred);
+    writeln("opDispatch".color.bgGreen);
+    writeln("opDispatch".color.bold);
+    writeln("opDispatch".color.fgred.bggreen.bold);
 }
 
 /** Whether to print text with colors or not
