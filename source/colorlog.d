@@ -14,6 +14,7 @@ module colorlog;
 
 import logger = std.experimental.logger;
 import std.array : empty;
+import std.conv : to;
 import std.experimental.logger : LogLevel;
 import std.stdio : writefln, stderr, stdout;
 
@@ -90,8 +91,6 @@ class SimpleLogger : logger.Logger {
         default:
         }
 
-        import std.conv : to;
-
         out_.writefln("%s: %s", payload.logLevel.to!string.color(use_color)
                 .bg(use_bg).mode(use_mode), payload.msg);
     }
@@ -122,8 +121,6 @@ class DebugLogger : logger.Logger {
         default:
         }
 
-        import std.conv : to;
-
         out_.writefln("%s: %s [%s:%d]", payload.logLevel.to!string.color(use_color)
                 .bg(use_bg).mode(use_mode), payload.msg, payload.funcName, payload.line);
     }
@@ -131,8 +128,6 @@ class DebugLogger : logger.Logger {
 
 /// A string mixin to create a SimpleLogger for the module.
 string mixinModuleLogger(logger.LogLevel defaultLogLvl = logger.LogLevel.all) @safe pure {
-    import std.conv : to;
-
     return "shared static this() { import std.experimental.logger : LogLevel; make!SimpleLogger(LogLevel."
         ~ defaultLogLvl.to!string ~ "); }";
 }
@@ -232,6 +227,12 @@ void setLogLevel(const string[] names, const logger.LogLevel lvl,
         setLogLevel(a, lvl, span);
 }
 
+/// Set the log level for all loggers in `names`.
+void setLogLevel(const NameLevel[] names, const SpanMode span = SpanMode.single) @safe {
+    foreach (a; names)
+        setLogLevel(a.name, a.level, span);
+}
+
 /** Log a mesage to the specified logger.
  *
  * This only takes the global lock one time and then cache the logger.
@@ -252,12 +253,29 @@ logger.Logger log(string name = __MODULE__)() @trusted {
     throw new UnknownLogger("no such logger registered: " ~ name);
 }
 
-/// Parse a comma separated string for logger names that can be used with `setLogLevel`.
-string[] parseLogNames(string arg) @safe pure {
-    import std.algorithm : splitter;
-    import std.array : array;
+struct NameLevel {
+    string name;
+    LogLevel level;
+}
 
-    return arg.splitter(',').array;
+/// Parse a comma+equal separated string for logger names that can be used with `setLogLevel`.
+NameLevel[] parseLogNames(string arg, logger.LogLevel defaultLogLvl = logger.LogLevel.all) @safe pure {
+    import std.algorithm : splitter, joiner, map;
+    import std.array : array;
+    import std.string : split;
+
+    NameLevel[] conv(string s) {
+        try {
+            auto sp = split(s, '=');
+            if (sp.length != 2)
+                return [NameLevel(s, defaultLogLvl)];
+            return [NameLevel(sp[0], sp[1].to!(logger.LogLevel))];
+        } catch (Exception e) {
+        }
+        return NameLevel[].init;
+    }
+
+    return arg.splitter(',').map!conv.joiner.array;
 }
 
 /** Always takes the global lock to find the logger.
@@ -354,7 +372,10 @@ unittest {
 
 @("shall parse a comma separate list")
 unittest {
-    assert(parseLogNames("hej,foo") == ["hej", "foo"]);
+    assert(parseLogNames("hej=trace,foo") == [
+            NameLevel("hej", logger.LogLevel.trace),
+            NameLevel("foo", logger.LogLevel.all)
+            ]);
 }
 
 private:
