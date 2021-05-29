@@ -257,10 +257,7 @@ string[] parseLogNames(string arg) @safe pure {
     import std.algorithm : splitter;
     import std.array : array;
 
-    auto names = arg.splitter(',').array;
-    if (names.empty)
-        return [RootLogger];
-    return names;
+    return arg.splitter(',').array;
 }
 
 /** Always takes the global lock to find the logger.
@@ -319,22 +316,45 @@ unittest {
 unittest {
     scope (exit)
         clearAllLoggers;
-    make!TestLogger();
-    make!TestLogger(logger.LogLevel.all, "test", __MODULE__);
+    make!TestLogger(logger.LogLevel.warning);
+    make!TestLogger(logger.LogLevel.warning, "test", __MODULE__);
 
-    setLogLevel(__MODULE__, logger.LogLevel.warning, SpanMode.depth);
+    setLogLevel(__MODULE__, logger.LogLevel.trace);
 
     logSlow.trace("hej");
     logSlow!"test".trace("hej");
 
     synchronized (poolLock) {
-        assert(((cast(TestLogger) loggers[__MODULE__]).lastMsg.empty),
+        assert(!((cast(TestLogger) loggers[__MODULE__]).lastMsg.empty),
+                "message found when it shouldn't");
+        assert(((cast(TestLogger) loggers["test"]).lastMsg.empty),
                 "message found when it shouldn't");
     }
 }
 
-@("shall change the log level ")
+@("shall change the log level from parent and up")
 unittest {
+    scope (exit)
+        clearAllLoggers;
+    make!TestLogger(logger.LogLevel.warning);
+    make!TestLogger(logger.LogLevel.warning, "test", __MODULE__);
+
+    setLogLevel(__MODULE__, logger.LogLevel.trace, SpanMode.depth);
+
+    logSlow.trace("hej");
+    logSlow!"test".trace("hej");
+
+    synchronized (poolLock) {
+        assert(!((cast(TestLogger) loggers[__MODULE__]).lastMsg.empty),
+                "message found when it shouldn't");
+        assert(!((cast(TestLogger) loggers["test"]).lastMsg.empty),
+                "message found when it shouldn't");
+    }
+}
+
+@("shall parse a comma separate list")
+unittest {
+    assert(parseLogNames("hej,foo") == ["hej", "foo"]);
 }
 
 private:
