@@ -7,6 +7,8 @@ Handles console logging in pretty colors.
 
 The module disables colors when stdout and stderr isn't a TTY that support
 colors. This is to avoid ASCII escape sequences in piped output.
+
+The logger named "_" is the default parent. It is, by default, not set to anything.
 */
 module colorlog;
 
@@ -16,6 +18,8 @@ import std.experimental.logger : LogLevel;
 import std.stdio : writefln, stderr, stdout;
 
 public import my.term_color;
+
+enum RootLogger = "_";
 
 /// The verbosity level of the logging to use.
 enum VerboseMode {
@@ -27,12 +31,25 @@ enum VerboseMode {
     warning,
 }
 
-/** Configure `std.experimental.logger` with a colorlog instance.
- */
-void confLogger(VerboseMode mode) @safe {
+LogLevel toLogLevel(VerboseMode mode) @safe pure nothrow @nogc {
     final switch (mode) {
     case VerboseMode.info:
-        logger.globalLogLevel = logger.LogLevel.info;
+        return logger.LogLevel.info;
+    case VerboseMode.trace:
+        return logger.LogLevel.all;
+    case VerboseMode.warning:
+        return logger.LogLevel.warning;
+    }
+}
+
+/** Configure `std.experimental.logger` `sharedLog` with a colorlog instance
+ * and register it with name "_".
+ */
+void confLogger(VerboseMode mode) @safe {
+    logger.globalLogLevel = toLogLevel(mode);
+
+    final switch (mode) {
+    case VerboseMode.info:
         logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
         break;
     case VerboseMode.trace:
@@ -44,6 +61,8 @@ void confLogger(VerboseMode mode) @safe {
         logger.sharedLog = new SimpleLogger(logger.LogLevel.info);
         break;
     }
+
+    () @trusted { register(logger.sharedLog, RootLogger); }();
 }
 
 class SimpleLogger : logger.Logger {
@@ -111,14 +130,15 @@ class DebugLogger : logger.Logger {
 }
 
 /// A string mixin to create a SimpleLogger for the module.
-string mixinModuleLogger(logger.LogLevel defaultLogLvl) @safe pure {
+string mixinModuleLogger(logger.LogLevel defaultLogLvl = logger.LogLevel.all) @safe pure {
     import std.conv : to;
 
-    return "shared static this() { make!SimpleLogger(" ~ defaultLogLvl.to!string ~ "); }";
+    return "shared static this() { import std.experimental.logger : LogLevel; make!SimpleLogger(LogLevel."
+        ~ defaultLogLvl.to!string ~ "); }";
 }
 
 /// Register a logger for the module and make it configurable from "outside" via the registry.
-void register(logger.Logger logger, string name = __MODULE__, string parent = "_") {
+void register(logger.Logger logger, string name = __MODULE__, string parent = RootLogger) {
     synchronized (poolLock) {
         loggerParent[name] = parent;
         loggers[name] = cast(shared) logger;
@@ -127,7 +147,7 @@ void register(logger.Logger logger, string name = __MODULE__, string parent = "_
 
 /// Create a logger for the module and make it configurable from "outside" via the registry.
 void make(LoggerT)(const logger.LogLevel lvl = logger.LogLevel.all,
-        string name = __MODULE__, string parent = "_") @trusted {
+        string name = __MODULE__, string parent = RootLogger) @trusted {
     register(new LoggerT(lvl), name, parent);
 }
 
@@ -163,8 +183,12 @@ enum SpanMode {
 void setLogLevel(const string name, const logger.LogLevel lvl, const SpanMode span = SpanMode
         .single) @trusted {
     static void setSingle(const string name, const logger.LogLevel lvl) {
-        auto uv = cast() loggers[name];
-        uv.logLevel = lvl;
+        if (auto v = name in loggers) {
+            auto uv = cast()*v;
+            uv.logLevel = lvl;
+        } else {
+            throw new UnknownLogger("no such logger registered: " ~ name);
+        }
     }
 
     static void depth(string startName, const logger.LogLevel lvl) {
@@ -225,7 +249,18 @@ logger.Logger log(string name = __MODULE__)() @trusted {
         }
     }
 
-    throw new UnknownLogger(name);
+    throw new UnknownLogger("no such logger registered: " ~ name);
+}
+
+/// Parse a comma separated string for logger names that can be used with `setLogLevel`.
+string[] parseLogNames(string arg) @safe pure {
+    import std.algorithm : splitter;
+    import std.array : array;
+
+    auto names = arg.splitter(',').array;
+    if (names.empty)
+        return [RootLogger];
+    return names;
 }
 
 /** Always takes the global lock to find the logger.
@@ -241,7 +276,7 @@ logger.Logger logSlow(string name = __MODULE__)() @trusted {
         }
     }
 
-    throw new UnknownLogger(name);
+    throw new UnknownLogger("no such logger registered: " ~ name);
 }
 
 /// Unknown logger.
